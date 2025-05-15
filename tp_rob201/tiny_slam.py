@@ -22,7 +22,29 @@ class TinySlam:
         """
         # TODO for TP4
 
-        score = 0
+        laser_dist = lidar.get_sensor_values()
+        laser_ang = lidar.get_ray_angles()
+
+        mask = np.where(laser_dist < lidar.max_range)
+        laser_dist = laser_dist[mask]
+        laser_ang = laser_ang[mask]
+      
+        x_world = (pose[0] + laser_dist*np.cos(pose[2] + laser_ang))
+        y_world = (pose[1] + laser_dist*np.sin(pose[2] + laser_ang))
+
+        idx_grid, idy_grid = self.grid.conv_world_to_map(x_world,y_world)
+
+        valid_mask = (
+        (idx_grid >= 0) & (idx_grid < self.grid.occupancy_map.shape[0]) &
+        (idy_grid >= 0) & (idy_grid < self.grid.occupancy_map.shape[1])
+        )
+
+        idx_grid = idx_grid[valid_mask]
+        idy_grid = idy_grid[valid_mask]
+
+        score = np.sum((self.grid.occupancy_map[idx_grid,idy_grid]))
+
+        print(score)
 
         return score
 
@@ -35,7 +57,24 @@ class TinySlam:
                         use self.odom_pose_ref if not given
         """
         # TODO for TP4
-        corrected_pose = odom_pose
+
+        if odom_pose_ref is None:
+            odom_pose_ref = self.odom_pose_ref
+
+        x_odom, y_odom, theta_odom = odom_pose
+        x_ref, y_ref, theta_ref = odom_pose_ref
+
+        d = np.sqrt(x_odom**2 + y_odom**2)
+        a_o = np.arctan2(y_odom, x_odom)
+
+        cos_theta_ref = np.cos(theta_ref + a_o)
+        sin_theta_ref = np.sin(theta_ref + a_o)
+
+        x_corrected = x_ref + d * cos_theta_ref
+        y_corrected = y_ref + sin_theta_ref
+        theta_corrected = theta_ref + theta_odom
+
+        corrected_pose = (x_corrected, y_corrected, theta_corrected)
 
         return corrected_pose
 
@@ -47,7 +86,22 @@ class TinySlam:
         """
         # TODO for TP4
 
-        best_score = 0
+        pose = self.get_corrected_pose(raw_odom_pose, self.odom_pose_ref) 
+        score = self._score(lidar,pose)
+        N = 10
+
+        for _ in range(0, N):
+            mu, sigma = 0, 0.1
+            offset = np.random.normal(mu, sigma, 1)
+            new_odom_pose = self.odom_pose_ref + offset
+            new_pose = self.get_corrected_pose(raw_odom_pose, new_odom_pose) 
+            new_score = self._score(lidar, new_pose) 
+            if score < new_score:
+                best_score = new_score  
+                # self.odom_pose_ref += offset
+            else: 
+                best_score = score
+
 
         return best_score
 
@@ -57,7 +111,26 @@ class TinySlam:
         lidar : placebot object with lidar data
         pose : [x, y, theta] nparray, corrected pose in world coordinates
         """
+        x_0 = pose[0]
+        y_0 = pose[0]
+        laser_dist = np.array(lidar.get_sensor_values())
+        laser_ang = np.array(lidar.get_ray_angles())
+
         # TODO for TP3
+
+        lidar_x_i = x_0 + laser_dist*np.cos(pose[2]+ laser_ang)
+        lidar_y_i = y_0 + laser_dist*np.sin(pose[2]+ laser_ang)
+
+        for x_i, y_i in zip(lidar_x_i,lidar_y_i):
+            self.grid.add_value_along_line(pose[0], pose[1], x_i, y_i, -1)
+
+        self.grid.add_map_points(lidar_x_i, lidar_y_i, 2)
+
+        self.grid.occupancy_map = np.clip(self.grid.occupancy_map, -40, 40)
+
+        self.grid.display_cv(pose)
+       
+
 
     def compute(self):
         """ Useless function, just for the exercise on using the profiler """

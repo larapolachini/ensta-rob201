@@ -33,3 +33,9 @@ class Planner:
         """ Frontier based exploration """
         goal = np.array([0, 0, 0])  # frontier to reach for exploration
         return goal
+
+
+
+
+           
+        

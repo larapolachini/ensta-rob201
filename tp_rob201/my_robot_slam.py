@@ -43,6 +43,9 @@ class MyRobotSlam(RobotAbstract):
 
         self.tiny_slam = TinySlam(self.occupancy_grid)
         self.planner = Planner(self.occupancy_grid)
+        self.turn_counter = 0
+        self.turn_direction = 0
+        
 
         # storage for pose after localization
         self.corrected_pose = np.array([0, 0, 0])
@@ -51,17 +54,41 @@ class MyRobotSlam(RobotAbstract):
         """
         Main control function executed at each time step
         """
-        return self.control_tp1()
+        return self.control_tp2()
+        #return self.control_tp4()
 
     def control_tp1(self):
         """
         Control function for TP1
         Control funtion with minimal random motion
         """
+
         self.tiny_slam.compute()
 
         # Compute new command speed to perform obstacle avoidance
-        command = reactive_obst_avoid(self.lidar())
+
+        pose = self.odometer_values()
+
+        #self.tiny_slam.update_map(self.lidar(), pose)
+        #self.occupancy_grid.display_cv(pose)
+
+        command, rotate = reactive_obst_avoid(self.lidar())
+        
+         # if it's turning, keep turning for some frames
+        if self.turn_counter > 0:
+            self.turn_counter -= 1
+            command = {"forward" : 0.0,
+                       "rotation" : 0.5 * self.turn_direction}
+
+        # if it detectates an obstacle and decides to turn
+        elif rotate != 0:
+            self.turn_direction = rotate
+            self.turn_counter = 15  # turn for N frames
+            command = {"forward" : 0.0,
+                       "rotation" : 0.5 * self.turn_direction}
+
+        # if no obstacle, it remains the same
+
         return command
 
     def control_tp2(self):
@@ -70,9 +97,51 @@ class MyRobotSlam(RobotAbstract):
         Main control function with full SLAM, random exploration and path planning
         """
         pose = self.odometer_values()
-        goal = [0,0,0]
+        
+        # Initializes the list of goals and the stage index
+        if not hasattr(self, 'goals'):
+            self.goals = [
+                np.array([0, -100, 0]),
+                np.array([-200, -400, 0]),
+                np.array([-200, -200, 0]),
+                np.array([-400, 0, 0])
+            ]
+            self.current_goal_index = 0
 
-        # Compute new command speed to perform obstacle avoidance
-        command = potential_field_control(self.lidar(), pose, goal)
+        current_goal = self.goals[self.current_goal_index]
+
+        dist_to_goal = np.linalg.norm(pose[:2] - current_goal[:2])
+
+        # If you got close, move on to the next goal, if there is one
+        if dist_to_goal < 10.0 and self.current_goal_index < len(self.goals) - 1:
+            self.current_goal_index += 1
+            current_goal = self.goals[self.current_goal_index]
+
+        self.occupancy_grid.display_cv(pose, current_goal)      
+        command = potential_field_control(self.lidar(), pose, current_goal)
 
         return command
+
+    def control_tp3(self):
+
+        pose = self.odometer_values()
+
+        self.tiny_slam.update_map(self.lidar(), pose)
+        self.occupancy_grid.display_cv(pose)
+
+        command = {"forward": 0.0,
+                   "rotation": 0.0}
+        return command
+
+    def control_tp4(self):
+
+        pose = self.odometer_values()
+        best_score = self.tiny_slam.localise(self.lidar(), pose)
+        # note_sur_20 = best_score*20/(self.occupancy_grid.max_grid_value*360)
+        self.tiny_slam.update_map(self.lidar(), pose)
+        #self.occupancy_grid.display_cv(pose)
+
+        command = {"forward": 0.0,
+                   "rotation": 0.0}
+        return command
+        
