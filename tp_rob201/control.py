@@ -43,6 +43,27 @@ def reactive_obst_avoid(lidar):
     
     return command, rotate
 
+def segment_lidar(distances, angles, seuil=10.0):
+    clusters = []
+    current_cluster = []
+
+    for i in range(len(distances)):
+        if not current_cluster:
+            current_cluster.append((distances[i], angles[i]))
+        else:
+            prev_d, _ = current_cluster[-1]
+            if abs(distances[i] - prev_d) < seuil:
+                current_cluster.append((distances[i], angles[i]))
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [(distances[i], angles[i])]
+
+    if current_cluster:
+        clusters.append(current_cluster)
+
+    return clusters
+
+
 def grad_attr(current_pose, goal_pose, K=1.0, d_switch=1.0):
     vec_goal = goal_pose[:2] - current_pose[:2]
     d_q = np.linalg.norm(vec_goal)
@@ -68,6 +89,10 @@ def grad_rep(lidar, current_pose, d_s = 30, K_o = 800):
 
     grad_rep = np.zeros(2)
     x, y, theta = current_pose
+    q = np.array([x, y])
+
+    clusters = segment_lidar(laser_dist, laser_ang, seuil=10.0)
+
 
     for d, a in zip(laser_dist, laser_ang):
         if d < d_s:

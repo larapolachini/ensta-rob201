@@ -101,7 +101,7 @@ class MyRobotSlam(RobotAbstract):
         # Initializes the list of goals and the stage index
         if not hasattr(self, 'goals'):
             self.goals = [
-                np.array([0, -100, 0]),
+                np.array([0, -200, 0]),
                 np.array([-200, -400, 0]),
                 np.array([-200, -200, 0]),
                 np.array([-400, 0, 0])
