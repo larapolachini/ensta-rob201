@@ -54,7 +54,7 @@ class MyRobotSlam(RobotAbstract):
         """
         Main control function executed at each time step
         """
-        return self.control_tp2()
+        return self.control_tp4()
         #return self.control_tp4()
 
     def control_tp1(self):
@@ -125,23 +125,39 @@ class MyRobotSlam(RobotAbstract):
     def control_tp3(self):
 
         pose = self.odometer_values()
-
         self.tiny_slam.update_map(self.lidar(), pose)
-        self.occupancy_grid.display_cv(pose)
+        #self.occupancy_grid.display_cv(pose)
+        
+        # Show map only every 10 iterations
+        if not hasattr(self, "display_counter"):
+            self.display_counter = 0
 
-        command = {"forward": 0.0,
-                   "rotation": 0.0}
+        if self.display_counter % 10 == 0:
+            self.occupancy_grid.display_cv(pose)
+
+        self.display_counter += 1
+        
+
+        # Use keyboard or random movement
+        command = {"forward": 0.08,
+                   "rotation": 0.05}
         return command
 
     def control_tp4(self):
 
         pose = self.odometer_values()
-        best_score = self.tiny_slam.localise(self.lidar(), pose)
-        # note_sur_20 = best_score*20/(self.occupancy_grid.max_grid_value*360)
-        self.tiny_slam.update_map(self.lidar(), pose)
-        #self.occupancy_grid.display_cv(pose)
+        score = self.tiny_slam.localise(self.lidar(), pose)
+        corrected_pose = self.tiny_slam.get_corrected_pose(pose)
+
+        # map update if location score is high enough
+        if -score > 50 or self.counter < 50:
+            self.tiny_slam.update_map(self.lidar(), corrected_pose)
+
+        if self.counter % 10 == 0:
+            self.occupancy_grid.display_cv(corrected_pose)
 
         command = {"forward": 0.0,
                    "rotation": 0.0}
+        
         return command
         
