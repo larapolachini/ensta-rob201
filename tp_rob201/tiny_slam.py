@@ -33,8 +33,8 @@ class TinySlam:
 
 
         theta_world = pose[2] + laser_ang
-        x_world = (pose[0] + laser_dist*np.cos(pose[2] + theta_world))
-        y_world = (pose[1] + laser_dist*np.sin(pose[2] + theta_world))
+        x_world = (pose[0] + laser_dist*np.cos(theta_world))
+        y_world = (pose[1] + laser_dist*np.sin(theta_world))
 
         idx_grid, idy_grid = self.grid.conv_world_to_map(x_world,y_world)
 
@@ -104,17 +104,6 @@ class TinySlam:
         N = 30
         mu = 0 
         sigma = [0.05,0.05,0.01]
-
-        #for _ in range(0, N):
-        #    offset = np.random.normal(mu, sigma, 1)
-        #    new_odom_pose = self.odom_pose_ref + offset
-        #    new_pose = self.get_corrected_pose(raw_odom_pose, new_odom_pose) 
-        #    new_score = self._score(lidar, new_pose) 
-        #    if score < new_score:
-        #        best_score = new_score  
-                # self.odom_pose_ref += offset
-        #    else: 
-        #        best_score = score
 
         while mu < N:
             offset = np.random.normal(0, sigma, 3)  # (dx, dy, dtheta)

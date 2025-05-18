@@ -64,7 +64,7 @@ def segment_lidar(distances, angles, seuil=10.0):
     return clusters
 
 
-def grad_attr(current_pose, goal_pose, K=1.0, d_switch=1.0):
+def grad_attr(current_pose, goal_pose, K=0.2, d_switch=1.0):
     vec_goal = goal_pose[:2] - current_pose[:2]
     d_q = np.linalg.norm(vec_goal)
 
@@ -79,7 +79,7 @@ def grad_attr(current_pose, goal_pose, K=1.0, d_switch=1.0):
 
     return d_q, grad_attr
 
-def grad_rep(lidar, current_pose, d_s = 30, K_o = 800):
+def grad_rep(lidar, current_pose, d_s = 30, K_o = 50):
     laser_dist = lidar.get_sensor_values()
     laser_ang = lidar.get_ray_angles()
 
@@ -121,11 +121,11 @@ def potential_field_control(lidar, current_pose, goal_pose):
     on initial pose, x forward, y on left)
     """
     # TODO for TP2
-    speed = 0.1
+    speed = 0.05
     speed_turn = 0
 
-    max_speed = 0.15    
-    max_turn = 1.0      
+    max_speed = 0.10    
+    max_turn = 0.5      
 
      # Attractif
     d_q, grad = grad_attr(current_pose, goal_pose)

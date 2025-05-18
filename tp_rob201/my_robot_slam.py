@@ -54,7 +54,7 @@ class MyRobotSlam(RobotAbstract):
         """
         Main control function executed at each time step
         """
-        return self.control_tp4()
+        return self.control_tp5()
         #return self.control_tp4()
 
     def control_tp1(self):
@@ -144,20 +144,159 @@ class MyRobotSlam(RobotAbstract):
         return command
 
     def control_tp4(self):
-
         pose = self.odometer_values()
+
+        # Etape SLAM : localisation avec correction de pose
         score = self.tiny_slam.localise(self.lidar(), pose)
         corrected_pose = self.tiny_slam.get_corrected_pose(pose)
 
-        # map update if location score is high enough
+        # Initialiser les objectifs si pas encore fait
+        if not hasattr(self, 'goals'):
+            self.goals = [
+                np.array([0, -200, 0]), 
+                np.array([-200, -400, 0]),
+                np.array([-400, -500, 0]),
+                np.array([-500, -400, 0]),
+                np.array([-400, -500, 0]),
+                np.array([-200, -200, 0]),
+                np.array([-400, 0, 0]),
+                np.array([-150, 0, 0]), #canto direito
+                np.array([-500, 0,0]),
+                np.array([-500, -250, 0]),
+                np.array([-500,0,0]),
+                np.array([-800, -100,0]),
+                np.array([-700, -200, 0]),
+                np.array([-700, -400, 0]),
+                np.array([-800, -100, 0]),
+                np.array([-800, -300, 0]),
+                np.array([-900, -300, 0]),
+                np.array([-900, -50, 0]),
+                np.array([-900, -300, 0]),
+                np.array([-800, -300, 0]),
+                np.array([-800, -400, 0]),
+                np.array([-900, -400, 0])
+
+            ]
+            self.current_goal_index = 0
+
+        current_goal = self.goals[self.current_goal_index]
+        dist_to_goal = np.linalg.norm(corrected_pose[:2] - current_goal[:2])
+
+        if dist_to_goal < 10.0 and self.current_goal_index < len(self.goals) - 1:
+            self.current_goal_index += 1
+            current_goal = self.goals[self.current_goal_index]
+
+    # Mise à jour de la carte si localisation est suffisamment bonne
         if -score > 50 or self.counter < 50:
             self.tiny_slam.update_map(self.lidar(), corrected_pose)
 
+    # Affichage de la carte
         if self.counter % 10 == 0:
-            self.occupancy_grid.display_cv(corrected_pose)
+            self.occupancy_grid.display_cv(corrected_pose, current_goal)
 
-        command = {"forward": 0.0,
-                   "rotation": 0.0}
-        
+    # Commande de mouvement : navigation vers l'objectif corrigé
+        command = potential_field_control(self.lidar(), corrected_pose, current_goal)
+
         return command
         
+
+
+    def control_tp5(self):
+        pose = self.odometer_values()
+        corrected_pose = self.tiny_slam.get_corrected_pose(pose)
+
+        # Inicializa atributos na primeira chamada
+        if not hasattr(self, "counter"):
+            self.counter = 0
+        if not hasattr(self, "planner"):
+            from planner import Planner
+            self.planner = Planner(self.occupancy_grid)
+        if not hasattr(self, "path_planned"):
+            self.path_planned = False
+        if not hasattr(self, "path_index"):
+            self.path_index = 0
+
+        # Fase 1: Exploração com SLAM por 200 iterações
+        if self.counter < 9000:           
+            self.tiny_slam.localise(self.lidar(), pose)
+            self.tiny_slam.update_map(self.lidar(), corrected_pose)
+            
+            if not hasattr(self, 'goals'):
+                self.goals = [
+                    np.array([0, -200, 0]), 
+                    np.array([-200, -400, 0]),
+                    np.array([-400, -500, 0]),
+                    np.array([-500, -400, 0]),
+                    np.array([-400, -500, 0]),
+                    np.array([-200, -200, 0]),
+                    np.array([-400, 0, 0]),
+                    np.array([-150, 0, 0]), #canto direito
+                    np.array([-500, 0,0]),
+                    np.array([-500, -250, 0]),
+                    np.array([-500,0,0]),
+                    np.array([-800, -100,0]),
+                    np.array([-700, -200, 0]),
+                    np.array([-700, -400, 0]),
+                    np.array([-800, -100, 0]),
+                    np.array([-800, -300, 0]),
+                    np.array([-900, -300, 0]),
+                    np.array([-900, -50, 0]),
+                    np.array([-900, -300, 0]),
+                    np.array([-800, -300, 0]),
+                    np.array([-800, -400, 0]),
+                    np.array([-900, -400, 0])
+                ]
+                self.current_goal_index = 0
+
+            current_goal = self.goals[self.current_goal_index]
+            dist_to_goal = np.linalg.norm(corrected_pose[:2] - current_goal[:2])
+
+            if dist_to_goal < 10.0 and self.current_goal_index < len(self.goals) - 1:
+                self.current_goal_index += 1
+                current_goal = self.goals[self.current_goal_index]
+
+            self.occupancy_grid.display_cv(corrected_pose, current_goal)
+            command = potential_field_control(self.lidar(), corrected_pose, current_goal)
+
+        # Fase 2: Planejamento do caminho de volta
+        elif not self.path_planned:
+            start = corrected_pose
+            goal = np.array([0, 0, 0])
+            self.path = self.planner.plan(start, goal)
+            self.path_planned = True
+            self.path_index = 0
+            command = {"forward": 0.0, "rotation": 0.0}
+
+        # Fase 3: Seguimento do caminho até (0, 0, 0)
+        else:
+            if self.path_index < len(self.path):
+                target = self.path[self.path_index]
+                dist = np.linalg.norm(corrected_pose[:2] - target[:2])
+
+            # Avança para o próximo ponto se estiver próximo
+                if dist < 20.0:
+                    self.path_index += 1
+                    if self.path_index < len(self.path):
+                        target = self.path[self.path_index]
+
+                if self.path_index < len(self.path):
+                    command = potential_field_control(self.lidar(), corrected_pose, target)
+                else:
+                    command = {"forward": 0.0, "rotation": 0.0}
+            else:
+                command = {"forward": 0.0, "rotation": 0.0}
+
+        # Visualização do mapa com trajetória, se disponível
+        if hasattr(self, "path"):
+            if isinstance(self.path, list):
+                self.path = np.array(self.path)
+
+            smoothed_path = self.planner.interpolate_path(self.path)
+                #self.occupancy_grid.display_cv(corrected_pose, np.array([0, 0, 0]), self.path)
+        #else:
+         #   self.occupancy_grid.display_cv(corrected_pose)
+
+        self.counter += 1
+        return command
+
+
