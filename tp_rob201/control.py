@@ -20,12 +20,12 @@ def reactive_obst_avoid(lidar):
     #180 is the front of the car
 
     front_sector = laser_dist[170:190]  
-    front_min = np.min(front_sector)  
+    front_min = np.min(front_sector)  # Find closest obstacle in front
     rotate = 0
 
-    if front_min < 50:
-        left_dist = laser_dist[0]   # get laser left
-        right_dist = laser_dist[360]  # get laser right
+    if front_min < 50:   # if obstacle closer than 50
+        left_dist = laser_dist[90]   # check left side
+        right_dist = laser_dist[270]  # check right side
         if left_dist > right_dist:
             rotate = -1
         else:
@@ -37,13 +37,13 @@ def reactive_obst_avoid(lidar):
         speed = 0.3
         rotation_speed = 0
 
-    rotate_ind = 0.5
+    rotate_ind = 0.5 # Rotation intensity factor 
     command = {"forward": speed,
                "rotation": rotation_speed*rotate_ind}
     
     return command, rotate
 
-def segment_lidar(distances, angles, seuil=10.0):
+def segment_lidar(distances, angles, seuil=10.0):    # cluster implementation for lidar data
     clusters = []
     current_cluster = []
 
@@ -63,7 +63,7 @@ def segment_lidar(distances, angles, seuil=10.0):
 
     return clusters
 
-
+# Calculate attractive potential gradient towards goal
 def grad_attr(current_pose, goal_pose, K=0.2, d_switch=1.0):
     vec_goal = goal_pose[:2] - current_pose[:2]
     d_q = np.linalg.norm(vec_goal)
@@ -79,10 +79,13 @@ def grad_attr(current_pose, goal_pose, K=0.2, d_switch=1.0):
 
     return d_q, grad_attr
 
+# Calculate repulsive potential from obstacles
 def grad_rep(lidar, current_pose, d_s = 30, K_o = 50):
     laser_dist = lidar.get_sensor_values()
     laser_ang = lidar.get_ray_angles()
 
+
+    # Filter invalid measurements
     valid = (laser_dist > 5.0) & (laser_dist < 300.0)
     laser_dist = laser_dist[valid]
     laser_ang = laser_ang[valid]
@@ -93,7 +96,7 @@ def grad_rep(lidar, current_pose, d_s = 30, K_o = 50):
 
     clusters = segment_lidar(laser_dist, laser_ang, seuil=10.0)
 
-
+    # Calculate repulsion from each valid LIDAR point
     for d, a in zip(laser_dist, laser_ang):
         if d < d_s:
             obs_x = x + d * np.cos(theta + a)
@@ -103,7 +106,8 @@ def grad_rep(lidar, current_pose, d_s = 30, K_o = 50):
             delta = q - q_obs
             dist = np.linalg.norm(delta)
 
-            if dist > 1e-3:
+            if dist > 1e-3: #Avoid division by 0 
+                # Standard repulsive potential formula
                 repulsion = K_o * (1.0/dist - 1.0/d_s) * (1.0 / dist**3) * delta
                 grad_rep += repulsion
 
@@ -128,21 +132,23 @@ def potential_field_control(lidar, current_pose, goal_pose):
     max_turn = 0.5      
 
      # Attractif
-    d_q, grad = grad_attr(current_pose, goal_pose)
-    #print(d_q)    
+    d_q, grad = grad_attr(current_pose, goal_pose)    
 
-    if d_q < 5.0:
+    if d_q < 5.0: # reached goal
         speed = 0
         speed_turn = 0
 
     else:
+        # add obstacle repulsion 
         grad_repulsive = grad_rep(lidar, current_pose, d_s=30) 
         grad_total = grad + grad_repulsive
 
+        #calculates desired direction 
         desired_angle = np.arctan2(grad_total[1], grad_total[0])
         angle_dif = desired_angle - current_pose[2]
         angle_dif = np.arctan2(np.sin(angle_dif), np.cos(angle_dif))
 
+        # set speeds based on potentials 
         speed = max_speed * np.clip(d_q, 0.0, 1.0) 
         speed_turn = np.clip(2.0 * angle_dif, -max_turn, max_turn)
 

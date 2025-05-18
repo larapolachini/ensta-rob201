@@ -45,8 +45,7 @@ class MyRobotSlam(RobotAbstract):
         self.planner = Planner(self.occupancy_grid)
         self.turn_counter = 0
         self.turn_direction = 0
-        
-
+    
         # storage for pose after localization
         self.corrected_pose = np.array([0, 0, 0])
 
@@ -54,8 +53,8 @@ class MyRobotSlam(RobotAbstract):
         """
         Main control function executed at each time step
         """
-        return self.control_tp5()
-        #return self.control_tp4()
+        return self.control_tp4()
+        
 
     def control_tp1(self):
         """
@@ -150,7 +149,7 @@ class MyRobotSlam(RobotAbstract):
         score = self.tiny_slam.localise(self.lidar(), pose)
         corrected_pose = self.tiny_slam.get_corrected_pose(pose)
 
-        # Initialiser les objectifs si pas encore fait
+        # Initialiser les objectifs
         if not hasattr(self, 'goals'):
             self.goals = [
                 np.array([0, -200, 0]), 
@@ -160,7 +159,7 @@ class MyRobotSlam(RobotAbstract):
                 np.array([-400, -500, 0]),
                 np.array([-200, -200, 0]),
                 np.array([-400, 0, 0]),
-                np.array([-150, 0, 0]), #canto direito
+                np.array([-150, 0, 0]), # up right board
                 np.array([-500, 0,0]),
                 np.array([-500, -250, 0]),
                 np.array([-500,0,0]),
@@ -205,7 +204,7 @@ class MyRobotSlam(RobotAbstract):
         pose = self.odometer_values()
         corrected_pose = self.tiny_slam.get_corrected_pose(pose)
 
-        # Inicializa atributos na primeira chamada
+        # Initialize attributes on first call
         if not hasattr(self, "counter"):
             self.counter = 0
         if not hasattr(self, "planner"):
@@ -216,7 +215,7 @@ class MyRobotSlam(RobotAbstract):
         if not hasattr(self, "path_index"):
             self.path_index = 0
 
-        # Fase 1: Exploração com SLAM por 200 iterações
+        # Phase 1: Exploration with SLAM for 9000 iterations
         if self.counter < 9000:           
             self.tiny_slam.localise(self.lidar(), pose)
             self.tiny_slam.update_map(self.lidar(), corrected_pose)
@@ -228,9 +227,10 @@ class MyRobotSlam(RobotAbstract):
                     np.array([-400, -500, 0]),
                     np.array([-500, -400, 0]),
                     np.array([-400, -500, 0]),
+                    np.array([-200, -500, 0]),
                     np.array([-200, -200, 0]),
                     np.array([-400, 0, 0]),
-                    np.array([-150, 0, 0]), #canto direito
+                    np.array([-150, 0, 0]), # up right board 
                     np.array([-500, 0,0]),
                     np.array([-500, -250, 0]),
                     np.array([-500,0,0]),
@@ -258,7 +258,7 @@ class MyRobotSlam(RobotAbstract):
             self.occupancy_grid.display_cv(corrected_pose, current_goal)
             command = potential_field_control(self.lidar(), corrected_pose, current_goal)
 
-        # Fase 2: Planejamento do caminho de volta
+        # Phase 2: Planning the way back
         elif not self.path_planned:
             start = corrected_pose
             goal = np.array([0, 0, 0])
@@ -267,13 +267,13 @@ class MyRobotSlam(RobotAbstract):
             self.path_index = 0
             command = {"forward": 0.0, "rotation": 0.0}
 
-        # Fase 3: Seguimento do caminho até (0, 0, 0)
+        # Phase 3: Following the path to (0, 0, 0)
         else:
             if self.path_index < len(self.path):
                 target = self.path[self.path_index]
                 dist = np.linalg.norm(corrected_pose[:2] - target[:2])
 
-            # Avança para o próximo ponto se estiver próximo
+            # Move to the next point if it is close
                 if dist < 20.0:
                     self.path_index += 1
                     if self.path_index < len(self.path):
@@ -286,15 +286,13 @@ class MyRobotSlam(RobotAbstract):
             else:
                 command = {"forward": 0.0, "rotation": 0.0}
 
-        # Visualização do mapa com trajetória, se disponível
+        # Map view 
         if hasattr(self, "path"):
             if isinstance(self.path, list):
                 self.path = np.array(self.path)
-
-            smoothed_path = self.planner.interpolate_path(self.path)
                 #self.occupancy_grid.display_cv(corrected_pose, np.array([0, 0, 0]), self.path)
-        #else:
-         #   self.occupancy_grid.display_cv(corrected_pose)
+        else:
+            self.occupancy_grid.display_cv(corrected_pose)
 
         self.counter += 1
         return command

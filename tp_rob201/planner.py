@@ -126,23 +126,6 @@ class Planner:
         x2, y2 = cell2
         return np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
-    def interpolate_path(path, step=5.0):
-        """
-        Interpola o caminho retornado pelo planner para uma visualização mais suave.
-        """
-        interpolated = []
-        for i in range(len(path) - 1):
-            p1 = path[i]
-            p2 = path[i+1]
-            vec = p2[:2] - p1[:2]
-            dist = np.linalg.norm(vec)
-            direction = vec / dist if dist != 0 else vec
-            num_steps = int(dist // step)
-            for j in range(num_steps):
-                point = p1[:2] + direction * step * j
-                interpolated.append(np.array([*point, 0]))
-        interpolated.append(path[-1])  # adiciona último ponto
-        return np.array(interpolated)
 
 
            

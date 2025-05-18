@@ -31,13 +31,15 @@ class TinySlam:
         laser_dist = laser_dist[mask]
         laser_ang = laser_ang[mask]
 
-
+        # convert LIDAR to world coordinates 
         theta_world = pose[2] + laser_ang
         x_world = (pose[0] + laser_dist*np.cos(theta_world))
         y_world = (pose[1] + laser_dist*np.sin(theta_world))
 
+        # convert to grid coordinates
         idx_grid, idy_grid = self.grid.conv_world_to_map(x_world,y_world)
 
+        # filter out-of-bounds points
         valid_mask = (
         (idx_grid >= 0) & (idx_grid < self.grid.occupancy_map.shape[0]) &
         (idy_grid >= 0) & (idy_grid < self.grid.occupancy_map.shape[1])
@@ -49,6 +51,7 @@ class TinySlam:
         idx_grid = idx_grid.astype(int)
         idy_grid = idy_grid.astype(int)
 
+        # sum log probabilities of occupied cells
         logs = self.grid.occupancy_map[idx_grid, idy_grid]
 
         score = np.sum(logs)
@@ -70,11 +73,10 @@ class TinySlam:
         if odom_pose_ref is None:
             odom_pose_ref = self.odom_pose_ref
 
+
+        # Apply rotation + translation to convert odom -> map frame
         x_odom, y_odom, theta_odom = odom_pose
         x_ref, y_ref, theta_ref = odom_pose_ref
-
-        # d = np.sqrt(x_odom**2 + y_odom**2)
-        # a_o = np.arctan2(y_odom, x_odom)
 
         cos_theta_ref = np.cos(theta_ref)
         sin_theta_ref = np.sin(theta_ref)
@@ -83,7 +85,7 @@ class TinySlam:
         y_corrected = y_ref + x_odom * sin_theta_ref + y_odom * cos_theta_ref
         theta_corrected = theta_ref + theta_odom
 
-        # Normalization of the angle
+        # Normalization of the angle [-pi, pi]
         theta_corrected = np.arctan2(np.sin(theta_corrected), np.cos(theta_corrected))
 
         corrected_pose = (x_corrected, y_corrected, theta_corrected)
@@ -101,8 +103,8 @@ class TinySlam:
         best_odom_pose_ref = np.copy(self.odom_pose_ref)
         best_pose = self.get_corrected_pose(raw_odom_pose, self.odom_pose_ref) 
         best_score = self._score(lidar,best_pose)
-        N = 30
-        mu = 0 
+        N = 30  # max iterations without improvement
+        mu = 0  # current it
         sigma = [0.05,0.05,0.01]
 
         while mu < N:
@@ -111,7 +113,7 @@ class TinySlam:
             new_pose = self.get_corrected_pose(raw_odom_pose, new_odom_pose_ref)
             new_score = self._score(lidar, new_pose)
 
-            if new_score > best_score:
+            if new_score > best_score: # found better pose
                 best_score = new_score
                 best_odom_pose_ref = new_odom_pose_ref
                 mu = 0  # reset compteur
